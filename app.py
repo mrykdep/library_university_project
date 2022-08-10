@@ -6,14 +6,16 @@ from flask_marshmallow import Marshmallow
 from flask_httpauth import HTTPBasicAuth
 import os
 
+#future: printing an identifier for books
+#future: printing membership card
 #future: books withour category or author should be handeled in frontend
-#err: add isbn convertor anywhere it is used
+#err: add phone number to member database
+#err: refactor route logics to database model files
 #err: need to implent maximum number of borrowed books per user
 #err: one person should not be able to borrow more than 1 book of same isbn
 #err: should add expire date check for members
 #err: need to change return mesages and add status codes
-#err: first user of year gets username from last year
-#err: need to implent a way to change differenciate between admin and operators from users
+
 #IMPORTANT MUST READ: database should be created manually
 #config values
 DEFAULT_BORROW_DAYS = 30
@@ -39,6 +41,21 @@ ma = Marshmallow(app)
 #init auth
 auth = HTTPBasicAuth()
 
+def fix_isbn(isbn):
+    calculated_isbn = isbn
+    if len(calculated_isbn)!=13:
+        sum = 0
+        for i in range(len(isbn)):
+            c = int(isbn[i])
+            if i % 2: w = 3
+            else: w = 1
+            sum += w * c
+        r = 10 - (sum % 10)
+        if r == 10 : sum = '0'
+        else: sum = str(r)
+        calculated_isbn = '978' + isbn[:-1] + sum
+    return calculated_isbn
+
 #classes
 class TempID(db.Model):
     master_key = db.Column(db.SmallInteger, primary_key=True)
@@ -55,6 +72,10 @@ class Member(db.Model):
 
     def __init__(self, member_name, member_password):
         current_date = date.today()
+        current_id = TempID.query.get(1)
+        if(str(current_id.next_id)[0:2] != str(current_date.year)[2:]):
+            current_id.next_id = int(str(date.today().year)[2:] + '0000000')
+            db.session.commit()
         current_id = TempID.query.get(1)
         self.member_id = current_id.next_id
         self.member_name = member_name
@@ -79,6 +100,13 @@ class Member(db.Model):
         else:
             current_id.next_id = int(str(date.today().year)[2:] + '0000000')
         db.session.commit()
+
+    def member_renewal(member_id):
+        current_date = date.today()
+        renewal = Member.query.get(member_id)
+        renewal.member_expire_date = current_date.replace(year = current_date.year + DEFAULT_MEMBERSHIP_YEARS)
+        db.session.commit()
+
 
 class Author(db.Model):
     author_id = db.Column(db.Integer, primary_key=True)
@@ -112,7 +140,7 @@ class Borrowed(db.Model):
 
     def __init__(self,isbn,operator_id,member_id):
         current_date = date.today()
-        self.isbn = isbn
+        self.isbn = fix_isbn(isbn)
         self.operator_id = operator_id
         self.member_id = member_id
         self.return_date = current_date + timedelta(days=DEFAULT_BORROW_DAYS)
@@ -145,19 +173,7 @@ class Book(db.Model):
     adding_date = db.Column(db.Date, nullable=False)
 
     def __init__(self, isbn,name, publish_year, edition, publisher_id, quantity, adding_date):
-        calculated_isbn = isbn
-        if len(calculated_isbn)!=13:
-            sum = 0
-            for i in range(len(isbn)):
-                c = int(isbn[i])
-                if i % 2: w = 3
-                else: w = 1
-                sum += w * c
-            r = 10 - (sum % 10)
-            if r == 10 : sum = '0'
-            else: sum = str(r)
-            calculated_isbn = '978' + isbn[:-1] + sum
-        self.isbn = calculated_isbn
+        self.isbn = fix_isbn(isbn)
         self.name = name
         self.publish_year = publish_year
         self.edition = edition
@@ -173,7 +189,7 @@ class AuthorBook(db.Model):
 
     def __init__(self, author_id, isbn, num):
         self.author_id = author_id
-        self.isbn = isbn
+        self.isbn = fix_isbn(isbn)
         self.num = num
 
 class TranslatorBook(db.Model):
@@ -183,7 +199,7 @@ class TranslatorBook(db.Model):
 
     def __init__(self, author_id, isbn, num):
         self.author_id = author_id
-        self.isbn = isbn
+        self.isbn = fix_isbn(isbn)
         self.num = num
 
 class CategoryBook(db.Model):
@@ -193,7 +209,7 @@ class CategoryBook(db.Model):
 
     def __init__(self, category_id, isbn, num):
         self.category_id = category_id
-        self.isbn = isbn
+        self.isbn = fix_isbn(isbn)
         self.num = num
     
 #configs database if configed file doesn't exist
@@ -255,6 +271,13 @@ def signup():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+@app.route('/api/member_renewal', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def member_renewal():
+    member_id = request.json['member_id']
+    Member.member_renewal(member_id)
+    return jsonify({'status': 'ok'})
+
 @app.route('/api/add_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_book():
@@ -273,6 +296,7 @@ def add_book():
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
     isbn = request.json['isbn']
+    isbn = fix_isbn(isbn)
     operator_id = request.json['operator_id']
     member_id = request.json['member_id']
     new_borrow = Borrowed(isbn, operator_id, member_id)
@@ -330,6 +354,7 @@ def login():
 def author_book():
     author_id = request.json['author_id']
     isbn = request.json['isbn']
+    isbn = fix_isbn(isbn)
     num = request.json['num']
     new_author_book = AuthorBook(author_id, isbn, num)
     db.session.add(new_author_book)
@@ -340,6 +365,7 @@ def author_book():
 def translator_book():
     translator_id = request.json['translator_id']
     isbn = request.json['isbn']
+    isbn = fix_isbn(isbn)
     num = request.json['num']
     new_translator_book = TranslatorBook(translator_id, isbn, num)
     db.session.add(new_translator_book)
@@ -350,6 +376,7 @@ def translator_book():
 def category_book():
     category_id = request.json['category_id']
     isbn = request.json['isbn']
+    isbn = fix_isbn(isbn)
     num = request.json['num']
     new_category_book = CategoryBook(category_id, isbn, num)
     db.session.add(new_category_book)

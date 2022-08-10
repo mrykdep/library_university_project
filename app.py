@@ -10,7 +10,6 @@ import os
 #err: add isbn convertor anywhere it is used
 #err: need to implent maximum number of borrowed books per user
 #err: one person should not be able to borrow more than 1 book of same isbn
-#err: implent a way so borrowed_id is not required for returning
 #err: should add expire date check for members
 #err: need to change return mesages and add status codes
 #err: first user of year gets username from last year
@@ -125,7 +124,7 @@ class Returned(db.Model):
     return_date = db.Column(db.Date, nullable=False)
     penalty_days = db.Column(db.Integer, nullable=False)
 
-    def __init__(self,borrow_id,operator_id,return_date):
+    def __init__(self,borrow_id,operator_id):
         current_date = date.today()
         delta = current_date - Borrowed.query.get(borrow_id).return_date
         self.borrow_id = borrow_id
@@ -284,7 +283,12 @@ def borrow_book():
 @app.route('/api/return_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def return_book():
-    pass
+    borrow_id = request.json['borrow_id']
+    operator_id = request.json['operator_id']
+    new_return = Returned(borrow_id, operator_id)
+    db.session.add(new_return)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
 
 @app.route('/api/add_category', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])

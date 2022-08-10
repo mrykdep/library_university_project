@@ -6,6 +6,15 @@ from flask_marshmallow import Marshmallow
 from flask_httpauth import HTTPBasicAuth
 import os
 
+#future: books withour category or author should be handeled in frontend
+#err: add isbn convertor anywhere it is used
+#err: need to implent maximum number of borrowed books per user
+#err: one person should not be able to borrow more than 1 book of same isbn
+#err: implent a way so borrowed_id is not required for returning
+#err: should add expire date check for members
+#err: need to change return mesages and add status codes
+#err: first user of year gets username from last year
+#err: need to implent a way to change differenciate between admin and operators from users
 #IMPORTANT MUST READ: database should be created manually
 #config values
 DEFAULT_BORROW_DAYS = 30
@@ -76,7 +85,7 @@ class Author(db.Model):
     author_id = db.Column(db.Integer, primary_key=True)
     author_name = db.Column(db.String(200), nullable=False)
     
-    def __init__(self, author_id, author_name):
+    def __init__(self, author_name):
         self.author_id = author_id
         self.author_name = author_name
 
@@ -84,7 +93,7 @@ class Publisher(db.Model):
     publisher_id = db.Column(db.Integer, primary_key=True)
     publisher_name = db.Column(db.String(200), nullable=False)
 
-    def __init__(self, publisher_id, publisher_name):
+    def __init__(self, publisher_name):
         self.publisher_id = publisher_id
         self.publisher_name = publisher_name
 
@@ -92,8 +101,7 @@ class Category(db.Model):
     category_id = db.Column(db.Integer, primary_key=True)
     category_name = db.Column(db.String(200), nullable=False)
 
-    def __init__(self, category_id, category_name):
-        self.category_id = category_id
+    def __init__(self, category_name):
         self.category_name = category_name
 
 class Borrowed(db.Model):
@@ -120,7 +128,7 @@ class Returned(db.Model):
     def __init__(self,borrow_id,operator_id,return_date):
         current_date = date.today()
         delta = current_date - Borrowed.query.get(borrow_id).return_date
-        self.borrowed_id = borrowed_id
+        self.borrow_id = borrow_id
         self.operator_id = operator_id
         self.return_date = current_date
         #err: needs checking
@@ -135,8 +143,9 @@ class Book(db.Model):
     publisher_id = db.Column(db.Integer, db.ForeignKey('publisher.publisher_id'), primary_key=True)
     quantity = db.Column(db.SmallInteger, nullable=False)
     remaining = db.Column(db.SmallInteger, nullable=False)
+    adding_date = db.Column(db.Date, nullable=False)
 
-    def __init__(self, isbn,name, publish_year, edition, publisher_id, quantity):
+    def __init__(self, isbn,name, publish_year, edition, publisher_id, quantity, adding_date):
         calculated_isbn = isbn
         if len(calculated_isbn)!=13:
             sum = 0
@@ -156,6 +165,7 @@ class Book(db.Model):
         self.publisher_id = publisher_id
         self.quantity = quantity
         self.remaining = quantity
+        self.adding_date = adding_date
 
 class AuthorBook(db.Model):
     author_id = db.Column(db.Integer, db.ForeignKey('author.author_id'), primary_key=True)
@@ -206,7 +216,7 @@ if(not os.path.isfile('configed')):
     fp = open('configed', 'x')
     fp.close()
 
-
+#auth setup
 @auth.verify_password
 def verify_password(member_id, hashed_member_password):
     if Member.is_valid(member_id, hashed_member_password):
@@ -218,12 +228,10 @@ def verify_password(member_id, hashed_member_password):
 def get_user_roles(member_id):
     return Member.get_role(member_id)
     
-
-#routes
+#admin routes
 @app.route('/api/signup_admin', methods=['POST'])
 @auth.login_required(role='admin')
-def add_member():
-    current_date = date.today()
+def signup_admin():
     member_name = request.json['member_name']
     member_password = request.json['member_password']
     member_type = request.json['member_type']
@@ -235,10 +243,10 @@ def add_member():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+#operator routes
 @app.route('/api/signup', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
-def add_member():
-    current_date = date.today()
+def signup():
     member_name = request.json['member_name']
     member_password = request.json['member_password']
     new_member = Member(member_name, member_password)
@@ -248,7 +256,63 @@ def add_member():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err need to implent a way to ban users after some amount of wrong login
+@app.route('/api/add_book', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def add_book():
+    isbn = request.json['isbn']
+    name = request.json['name']
+    publish_year = request.json['publish_year']
+    edition = request.json['edition']
+    publisher_id = request.json['publisher_id']
+    quantity = request.json['quantity']
+    new_book = Book(isbn,name,publish_year,edition,publisher_id,quantity)
+    db.session.add(new_book)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/borrow_book', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def borrow_book():
+    isbn = request.json['isbn']
+    operator_id = request.json['operator_id']
+    member_id = request.json['member_id']
+    new_borrow = Borrowed(isbn, operator_id, member_id)
+    db.session.add(new_borrow)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/return_book', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def return_book():
+    pass
+
+@app.route('/api/add_category', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def add_category():
+    category_name = request.json['category_name']
+    new_category = Category(category_name)
+    db.session.add(new_category)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/add_author', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def add_author():
+    author_name = request.json['author_name']
+    new_author = Author(author_name)
+    db.session.add(new_author)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/add_publisher', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def add_publisher():
+    publisher_name = request.json['publisher_name']
+    new_publisher = Publisher(publisher_name)
+    db.session.add(new_publisher)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
 @app.route('/api/login', methods=['POST'])
 def login():
     member_id = request.json['member_id']
@@ -257,6 +321,36 @@ def login():
         return jsonify({'status': 'ok'})
     else:
         return jsonify({'status': 'not ok'})
+
+@app.route('/api/author_book', methods=['POST'])
+def author_book():
+    author_id = request.json['author_id']
+    isbn = request.json['isbn']
+    num = request.json['num']
+    new_author_book = AuthorBook(author_id, isbn, num)
+    db.session.add(new_author_book)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/translator_book', methods=['POST'])
+def translator_book():
+    translator_id = request.json['translator_id']
+    isbn = request.json['isbn']
+    num = request.json['num']
+    new_translator_book = TranslatorBook(translator_id, isbn, num)
+    db.session.add(new_translator_book)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/category_book', methods=['POST'])
+def category_book():
+    category_id = request.json['category_id']
+    isbn = request.json['isbn']
+    num = request.json['num']
+    new_category_book = CategoryBook(category_id, isbn, num)
+    db.session.add(new_category_book)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True)

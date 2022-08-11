@@ -10,7 +10,7 @@ import os
 #future: printing membership card
 #future: books without category or author should be handeled in frontend
 #future: add id card generator
-#err: need to add status codes
+#future: need to add status codes
 
 #IMPORTANT MUST READ: database should be created manually
 #config values
@@ -157,7 +157,6 @@ class Category(db.Model):
         else:
             return False
 
-#err: remove returned books
 class Borrowed(db.Model):
     borrow_id = db.Column(db.BigInteger, primary_key=True)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
@@ -171,19 +170,27 @@ class Borrowed(db.Model):
         self.operator_id = operator_id
         self.member_id = member_id
         self.borrow_date = current_date
+    def borrow_id_available(borrow_id):
+        if Borrowed.query.get(borrow_id):
+            return True
+        else:
+            return False
 
-#err add borrow history and return history
 class Returned(db.Model):
-    borrow_id = db.Column(db.BigInteger, db.ForeignKey('borrowed.borrow_id'), primary_key=True)
+    return_id = db.Column(db.BigInteger, primary_key=True)
+    isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
     operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
+    operator_id_return = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
+    member_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
     return_date = db.Column(db.Date, nullable=False)
     penalty_days = db.Column(db.Integer, nullable=False)
 
-    def __init__(self,borrow_id,operator_id):
+    def __init__(self, borrow_id, operator_id_return):
         current_date = date.today()
         delta = current_date - Borrowed.query.get(borrow_id).borrow_date - timedelta(days=DEFAULT_BORROW_DAYS)
-        self.borrow_id = borrow_id
-        self.operator_id = operator_id
+        self.isbn = Borrowed.query.get(borrow_id).isbn
+        self.operator_id = Borrowed.query.get(borrow_id).operator_id
+        self.operator_id_return = operator_id_return
         self.return_date = current_date
         self.penalty_days = 0 if delta.days() <= 0 else delta.days()
 
@@ -357,6 +364,8 @@ def add_book():
         return jsonify({'status': f'{isbn[1]}'})
     if not Publisher.publisher_available(publisher_name):
         return jsonify({'status': 'publisher not found'})
+    if Book.available(isbn):
+        return jsonify({'status': 'book already added'})
     isbn = isbn[0]
     new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity)
     db.session.add(new_book)
@@ -394,22 +403,30 @@ def borrow_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err
 @app.route('/api/return_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def return_book():
     borrow_id = request.json['borrow_id']
     operator_id = request.json['operator_id']
+    if not Borrowed.borrow_id_available(borrow_id):
+        return jsonify({'status': 'borrow id not found'})
+    if Member.member_available(operator_id):
+        return jsonify({'status': 'operator not found'})
+    if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
+        return jsonify({'status': 'operator expired'})
     new_return = Returned(borrow_id, operator_id)
+    old_borrow = Borrowed.query.get(borrow_id)
+    db.session.delete(old_borrow)
     db.session.add(new_return)
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err: check if category, author, publisher is added or not
 @app.route('/api/add_category', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_category():
     category_name = request.json['category_name']
+    if Category.category_available(category_name):
+        return jsonify({'status': 'category already added'})
     new_category = Category(category_name)
     db.session.add(new_category)
     db.session.commit()
@@ -419,6 +436,8 @@ def add_category():
 @auth.login_required(role=['admin', 'operator'])
 def add_author():
     author_name = request.json['author_name']
+    if Author.author_available(author_name):
+        return jsonify({'status': 'author already added'})
     new_author = Author(author_name)
     db.session.add(new_author)
     db.session.commit()
@@ -428,6 +447,8 @@ def add_author():
 @auth.login_required(role=['admin', 'operator'])
 def add_publisher():
     publisher_name = request.json['publisher_name']
+    if Publisher.publisher_available(publisher_name):
+        return jsonify({'status': 'publisher already added'})
     new_publisher = Publisher(publisher_name)
     db.session.add(new_publisher)
     db.session.commit()

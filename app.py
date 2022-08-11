@@ -10,10 +10,6 @@ import os
 #future: printing membership card
 #future: books without category or author should be handeled in frontend
 #future: add id card generator
-#err: borrow and return related routes and db model needs refactoring
-#err: need to implent maximum number of borrowed books per user
-#err: one person should not be able to borrow more than 1 book of same isbn
-#err: should add expire date check for members
 #err: need to add status codes
 
 #IMPORTANT MUST READ: database should be created manually
@@ -23,6 +19,7 @@ DEFAULT_MEMBERSHIP_YEARS = 1
 DATABASE_USERNAME = 'pedram'
 DATABASE_PASSWORD = 'Project.4003'
 DATABASE_NAME = 'library'
+MAX_BORROW = 5
 ADMIN_NAME = 'Pedram Akbari'
 ADMIN_PASSWORD = 'Project.4003'
 ADMIN_PHONE = '+989015155598'
@@ -78,6 +75,7 @@ class Member(db.Model):
     member_password = db.Column(db.String(64), nullable=False)
     member_type = db.Column(db.String(8), nullable=False)
     member_expire_date = db.Column(db.Date, nullable=False)
+    borrowed_books = db.Column(db.SmallInteger, nullable=False)
 
     def __init__(self, member_name, member_phone, member_password):
         current_date = date.today()
@@ -92,9 +90,13 @@ class Member(db.Model):
         self.member_password = hashlib.sha256(member_password.encode('ascii')).hexdigest()
         self.member_type = 'user'
         self.member_expire_date = current_date.replace(year = current_date.year + DEFAULT_MEMBERSHIP_YEARS)
+        self.borrowed_books = 0
 
     def is_valid(member_id,member_password):
-        if Member.query.get(member_id).member_password == member_password:
+        current_date = date.today()
+        if Member.query.get(member_id).member_password == member_password and Member.query.get(member_id).member_type == 'admin':
+            return True
+        if Member.query.get(member_id).member_password == member_password and current_date <= Member.query.get(member_id).member_expire_date:
             return True
         else:
             return False
@@ -115,6 +117,9 @@ class Member(db.Model):
             current_id.next_id += 1
         else:
             current_id.next_id = int(str(date.today().year)[2:] + '0000000')
+    
+    def borrowed_number(member_id):
+        return Member.query.get(member_id).borrow_book
 
 class Author(db.Model):
     author_name = db.Column(db.String(200), primary_key=True)
@@ -152,6 +157,7 @@ class Category(db.Model):
         else:
             return False
 
+#err: remove returned books
 class Borrowed(db.Model):
     borrow_id = db.Column(db.BigInteger, primary_key=True)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
@@ -165,9 +171,8 @@ class Borrowed(db.Model):
         self.operator_id = operator_id
         self.member_id = member_id
         self.borrow_date = current_date
-        #err: add quantity related things(should be added in api calls)
 
-#err: fix return history
+#err add borrow history and return history
 class Returned(db.Model):
     borrow_id = db.Column(db.BigInteger, db.ForeignKey('borrowed.borrow_id'), primary_key=True)
     operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
@@ -176,20 +181,11 @@ class Returned(db.Model):
 
     def __init__(self,borrow_id,operator_id):
         current_date = date.today()
-        #err: delta is not int but it's checked as an int
         delta = current_date - Borrowed.query.get(borrow_id).borrow_date - timedelta(days=DEFAULT_BORROW_DAYS)
         self.borrow_id = borrow_id
         self.operator_id = operator_id
         self.return_date = current_date
-        self.penalty_days = 0 if delta <= 0 else delta
-
-class ReturnHistory(db.Model):
-    borrow_id = db.Column(db.Integer, primary_key=True)
-    isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
-    operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
-    member_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
-    borrow_date = db.Column(db.Date, nullable=False)
-    return_date = db.Column(db.Date, nullable=False)
+        self.penalty_days = 0 if delta.days() <= 0 else delta.days()
 
 class Book(db.Model):
     isbn = db.Column(db.String(13), primary_key=True)
@@ -210,6 +206,12 @@ class Book(db.Model):
         self.quantity = quantity
         self.remaining = quantity
         self.adding_date = adding_date
+
+    def available(isbn):
+        if Book.query.get(isbn).quantity != 0:
+            return True
+        else:
+            return False
 
 class AuthorBook(db.Model):
     author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), primary_key=True)
@@ -361,19 +363,34 @@ def add_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err
 @app.route('/api/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
     isbn = request.json['isbn']
+    operator_id = request.json['operator_id']
+    member_id = request.json['member_id']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
+    if Member.member_available(operator_id):
+        return jsonify({'status': 'operator not found'})
+    if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
+        return jsonify({'status': 'operator expired'})
+    if Member.member_available(member_id):
+        return jsonify({'status': 'member not found'})
+    if Member.member_available(member_id) and not Member.is_valid(member_id, Member.query.get(member_id).member_password):
+        return jsonify({'status': 'member expired'})
     isbn = isbn[0]
-    operator_id = request.json['operator_id']
-    member_id = request.json['member_id']
+    if not Book.available(isbn):
+        return jsonify({'status': 'all books of this isbn are borrowed'})
+    if Member.query.get(member_id).borrowed_books >= MAX_BORROW:
+        return jsonify({'status': 'user borrowed max possible books'})
     new_borrow = Borrowed(isbn, operator_id, member_id)
     db.session.add(new_borrow)
+    book = Book.query.get(isbn)
+    book.remaining -= 1
+    member = Member.query.get(member_id)
+    member.borrowed_books += 1
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -388,6 +405,7 @@ def return_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+#err: check if category, author, publisher is added or not
 @app.route('/api/add_category', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_category():

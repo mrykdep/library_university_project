@@ -9,12 +9,12 @@ import os
 #future: printing an identifier for books
 #future: printing membership card
 #future: books without category or author should be handeled in frontend
-#err: add id card generator
+#future: add id card generator
 #err: borrow and return related routes and db model needs refactoring
 #err: need to implent maximum number of borrowed books per user
 #err: one person should not be able to borrow more than 1 book of same isbn
 #err: should add expire date check for members
-#err: need to change return mesages and add status codes
+#err: need to add status codes
 
 #IMPORTANT MUST READ: database should be created manually
 #config values
@@ -41,7 +41,6 @@ ma = Marshmallow(app)
 #init auth
 auth = HTTPBasicAuth()
 
-#err: should add error if not 10 or 13 digits
 def fix_isbn(isbn):
     if len(isbn)!=10 and len(isbn)!= 13:
         return (0, "given isbn is not 10 or 13 digits.")
@@ -64,12 +63,6 @@ def check_phone(phone_number):
         return "wrong phone number"
     else:
         return ""
-
-def check_type(member_type):
-    if(member_type == 'admin' or member_type == 'operator'):
-        return ""
-    else:
-        return "wrong member type"
 
 #classes
 class TempID(db.Model):
@@ -128,6 +121,12 @@ class Author(db.Model):
     
     def __init__(self, author_name):
         self.author_name = author_name
+    
+    def author_available(author_name):
+        if Author.query.get(author_name):
+            return True
+        else:
+            return False
 
 class Publisher(db.Model):
     publisher_name = db.Column(db.String(200), primary_key=True)
@@ -146,6 +145,12 @@ class Category(db.Model):
 
     def __init__(self, category_name):
         self.category_name = category_name
+
+    def category_available(category_name):
+        if Category.query.get(category_name):
+            return True
+        else:
+            return False
 
 class Borrowed(db.Model):
     borrow_id = db.Column(db.BigInteger, primary_key=True)
@@ -278,8 +283,8 @@ def signup_admin():
     member_type = request.json['member_type']
     if(not(check_phone(member_phone))):
         return jsonify({'status': f'{check_phone(member_phone)}'})
-    if(not(check_type(member_type))):
-        return jsonify({'status': f'{check_type(member_type)}'})
+    if member_type != 'operator' and member_type!= 'admin':
+        return jsonify({'status': 'type is not an operator or admin'})
     new_member = Member(member_name, member_phone, member_password)
     new_member.member_type = member_type
     if member_type == 'admin':
@@ -287,6 +292,20 @@ def signup_admin():
     else:
         new_member.member_id += 1000000000
     db.session.add(new_member)
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/operator_renewal', methods=['POST'])
+@auth.login_required(role='admin')
+def operator_renewal():
+    current_date = date.today()
+    member_id = request.json['member_id']
+    if not Member.member_available(member_id):
+        return jsonify({'status': 'operator not found'})
+    if Member.get_role(member_id)!= 'operator':
+        return jsonify({'status': 'member is not an operator'})
+    renewal = Member.query.get(member_id)
+    renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -306,8 +325,6 @@ def signup():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err:seprate renewal for operator
-#err: should check for member type(only users)
 @app.route('/api/member_renewal', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def member_renewal():
@@ -315,6 +332,10 @@ def member_renewal():
     member_id = request.json['member_id']
     if not Member.member_available(member_id):
         return jsonify({'status': 'member not found'})
+    if Member.get_role(member_id)== 'operator':
+        return jsonify({'status': 'member is an operator'})
+    if Member.get_role(member_id)== 'admin':
+        return jsonify({'status': 'member is an admin'})
     renewal = Member.query.get(member_id)
     renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
     db.session.commit()
@@ -396,12 +417,13 @@ def add_publisher():
 
 @app.route('/api/author_book', methods=['POST'])
 def author_book():
-    #err
     author_name = request.json['author_name']
     isbn = request.json['isbn']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
+    if not Author.author_available(author_name):
+        return jsonify({'status': 'author not found'})
     isbn = isbn[0]
     num = request.json['num']
     new_author_book = AuthorBook(author_name, isbn, num)
@@ -411,27 +433,29 @@ def author_book():
 
 @app.route('/api/translator_book', methods=['POST'])
 def translator_book():
-    #err
-    translator_book = request.json['translator_book']
+    translator_name = request.json['translator_name']
     isbn = request.json['isbn']
+    num = request.json['num']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
+    if not Author.author_available(translator_name):
+        return jsonify({'status': 'translator not found'})
     isbn = isbn[0]
-    num = request.json['num']
-    new_translator_book = TranslatorBook(translator_book, isbn, num)
+    new_translator_book = TranslatorBook(translator_name, isbn, num)
     db.session.add(new_translator_book)
     db.session.commit()
     return jsonify({'status': 'ok'})
 
 @app.route('/api/category_book', methods=['POST'])
 def category_book():
-    #err
     category_name = request.json['category_name']
     isbn = request.json['isbn']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
+    if not Category.category_available(category_name):
+        return jsonify({'status': 'category not found'})
     isbn = isbn[0]
     num = request.json['num']
     new_category_book = CategoryBook(category_name, isbn, num)

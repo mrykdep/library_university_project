@@ -9,8 +9,8 @@ import os
 #future: printing an identifier for books
 #future: printing membership card
 #future: books withour category or author should be handeled in frontend
+#err: borrow and return related routes and db model needs refactoring
 #err: add phone number to member database
-#err: refactor route logics to database model files
 #err: need to implent maximum number of borrowed books per user
 #err: one person should not be able to borrow more than 1 book of same isbn
 #err: should add expire date check for members
@@ -41,6 +41,7 @@ ma = Marshmallow(app)
 #init auth
 auth = HTTPBasicAuth()
 
+#err: should add error if not 10 or 13 digits
 def fix_isbn(isbn):
     calculated_isbn = isbn
     if len(calculated_isbn)!=13:
@@ -83,6 +84,7 @@ class Member(db.Model):
         self.member_type = 'user'
         self.member_expire_date = current_date.replace(year = current_date.year + DEFAULT_MEMBERSHIP_YEARS)
 
+    #err: should add different errors
     def is_valid(member_id,member_password):
         if Member.query.get(member_id).member_password == member_password:
             return True
@@ -99,13 +101,6 @@ class Member(db.Model):
             current_id.next_id += 1
         else:
             current_id.next_id = int(str(date.today().year)[2:] + '0000000')
-        db.session.commit()
-
-    def member_renewal(member_id):
-        current_date = date.today()
-        renewal = Member.query.get(member_id)
-        renewal.member_expire_date = current_date.replace(year = current_date.year + DEFAULT_MEMBERSHIP_YEARS)
-        db.session.commit()
 
 
 class Author(db.Model):
@@ -113,7 +108,6 @@ class Author(db.Model):
     author_name = db.Column(db.String(200), nullable=False)
     
     def __init__(self, author_name):
-        self.author_id = author_id
         self.author_name = author_name
 
 class Publisher(db.Model):
@@ -121,7 +115,6 @@ class Publisher(db.Model):
     publisher_name = db.Column(db.String(200), nullable=False)
 
     def __init__(self, publisher_name):
-        self.publisher_id = publisher_id
         self.publisher_name = publisher_name
 
 class Category(db.Model):
@@ -132,35 +125,43 @@ class Category(db.Model):
         self.category_name = category_name
 
 class Borrowed(db.Model):
-    borrow_id = db.Column(db.Integer, primary_key=True)
+    borrow_id = db.Column(db.BigInteger, primary_key=True)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
     operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
     member_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
-    return_date = db.Column(db.Date, nullable=False)
+    borrow_date = db.Column(db.Date, nullable=False)
 
     def __init__(self,isbn,operator_id,member_id):
         current_date = date.today()
         self.isbn = fix_isbn(isbn)
         self.operator_id = operator_id
         self.member_id = member_id
-        self.return_date = current_date + timedelta(days=DEFAULT_BORROW_DAYS)
+        self.borrow_date = current_date
         #err: add quantity related things(should be added in api calls)
 
+#err: fix return history
 class Returned(db.Model):
-    borrow_id = db.Column(db.Integer, db.ForeignKey('borrowed.borrow_id'), primary_key=True)
+    borrow_id = db.Column(db.BigInteger, db.ForeignKey('borrowed.borrow_id'), primary_key=True)
     operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
     return_date = db.Column(db.Date, nullable=False)
     penalty_days = db.Column(db.Integer, nullable=False)
 
     def __init__(self,borrow_id,operator_id):
         current_date = date.today()
-        delta = current_date - Borrowed.query.get(borrow_id).return_date
+        #err: delta is not int but it's checked as an int
+        delta = current_date - Borrowed.query.get(borrow_id).borrow_date - timedelta(days=DEFAULT_BORROW_DAYS)
         self.borrow_id = borrow_id
         self.operator_id = operator_id
         self.return_date = current_date
-        #err: needs checking
         self.penalty_days = 0 if delta <= 0 else delta
-        #err: add quantity related things(should be added in api calls)
+
+class ReturnHistory(db.Model):
+    borrow_id = db.Column(db.Integer, primary_key=True)
+    isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
+    operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
+    member_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable=False)
+    borrow_date = db.Column(db.Date, nullable=False)
+    return_date = db.Column(db.Date, nullable=False)
 
 class Book(db.Model):
     isbn = db.Column(db.String(13), primary_key=True)
@@ -274,8 +275,11 @@ def signup():
 @app.route('/api/member_renewal', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def member_renewal():
+    current_date = date.today()
     member_id = request.json['member_id']
-    Member.member_renewal(member_id)
+    renewal = Member.query.get(member_id)
+    renewal.member_expire_date = current_date.replace(year = current_date.year + DEFAULT_MEMBERSHIP_YEARS)
+    db.session.commit()
     return jsonify({'status': 'ok'})
 
 @app.route('/api/add_book', methods=['POST'])
@@ -295,6 +299,7 @@ def add_book():
 @app.route('/api/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
+    #err
     isbn = request.json['isbn']
     isbn = fix_isbn(isbn)
     operator_id = request.json['operator_id']
@@ -307,6 +312,7 @@ def borrow_book():
 @app.route('/api/return_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def return_book():
+    #err
     borrow_id = request.json['borrow_id']
     operator_id = request.json['operator_id']
     new_return = Returned(borrow_id, operator_id)
@@ -341,15 +347,6 @@ def add_publisher():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/login', methods=['POST'])
-def login():
-    member_id = request.json['member_id']
-    member_password = request.json['member_password']
-    if verify_password(member_id, member_password):
-        return jsonify({'status': 'ok'})
-    else:
-        return jsonify({'status': 'not ok'})
-
 @app.route('/api/author_book', methods=['POST'])
 def author_book():
     author_id = request.json['author_id']
@@ -382,6 +379,15 @@ def category_book():
     db.session.add(new_category_book)
     db.session.commit()
     return jsonify({'status': 'ok'})
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    member_id = request.json['member_id']
+    member_password = request.json['member_password']
+    if verify_password(member_id, member_password):
+        return jsonify({'status': 'ok'})
+    else:
+        return jsonify({'status': 'not ok'})
 
 if __name__ == '__main__':
     app.run(debug=True)

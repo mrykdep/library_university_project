@@ -11,6 +11,9 @@ marshmallow-sqlalchemy = "*"
 install = "*"
 mysqlclient = "*"
 flask-httpauth = "*"
+pdfkit = "*"
+code128 = "*"
+qrcode = {extras = ["pil"], version = "*"}
 
 [dev-packages]
 

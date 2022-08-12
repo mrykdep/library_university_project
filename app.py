@@ -1,10 +1,12 @@
 import hashlib
 from datetime import date , timedelta
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from flask_httpauth import HTTPBasicAuth
+from card_gen.gen import cardgen
 import os
+from pathlib import Path
 
 #future: printing an identifier for books
 #future: printing membership card
@@ -57,9 +59,9 @@ def fix_isbn(isbn):
 
 def check_phone(phone_number):
     if(len(phone_number)>=16):
-        return "wrong phone number"
+        return False
     else:
-        return ""
+        return True
 
 #classes
 class TempID(db.Model):
@@ -291,7 +293,7 @@ def signup_admin():
     member_password = request.json['member_password']
     member_type = request.json['member_type']
     if(not(check_phone(member_phone))):
-        return jsonify({'status': f'{check_phone(member_phone)}'})
+        return jsonify({'status': 'wrong phone number'})
     if member_type != 'operator' and member_type!= 'admin':
         return jsonify({'status': 'type is not an operator or admin'})
     new_member = Member(member_name, member_phone, member_password)
@@ -317,6 +319,16 @@ def operator_renewal():
     renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
     db.session.commit()
     return jsonify({'status': 'ok'})
+
+@app.route('/api/cardpdfadmin', methods=['POST'])
+@auth.login_required(role='admin')
+def cardpdf():
+    member_id = request.json['member_id']
+    if (not Member.member_available(member_id)):
+        return jsonify({'status': 'member is not available'})
+    member = Member.query.get(member_id)
+    cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
+    return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
 
 #operator routes
 @app.route('/api/signup', methods=['POST'])
@@ -502,6 +514,17 @@ def category_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+@app.route('/api/cardpdf', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def cardpdf():
+    member_id = request.json['member_id']
+    if (not Member.member_available(member_id)) and (not Member.query.get(member_id).member_type == 'user'):
+        return jsonify({'status': 'member is not user or member is not available'})
+    member = Member.query.get(member_id)
+    cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
+    return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
+
+#user routes
 @app.route('/api/login', methods=['POST'])
 def login():
     member_id = request.json['member_id']

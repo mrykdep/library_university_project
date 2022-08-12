@@ -235,7 +235,8 @@ book_schema = BookSchema()
 books_schema = BookSchema(many=True)
 
 class AuthorBook(db.Model):
-    author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), primary_key=True)
+    author_book_id = db.Column(db.BigInteger, primary_key=True)
+    author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
     num = db.Column(db.SmallInteger, nullable=False, unique = True)
 
@@ -245,7 +246,8 @@ class AuthorBook(db.Model):
         self.num = num
 
 class TranslatorBook(db.Model):
-    author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), primary_key=True)
+    translator_book_id = db.Column(db.BigInteger, primary_key=True)
+    author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
     num = db.Column(db.SmallInteger, nullable=False, unique = True)
 
@@ -255,7 +257,8 @@ class TranslatorBook(db.Model):
         self.num = num
 
 class CategoryBook(db.Model):
-    category_name = db.Column(db.String(200), db.ForeignKey('category.category_name'), primary_key=True)
+    category_book_id = db.Column(db.BigInteger, primary_key=True)
+    category_name = db.Column(db.String(200), db.ForeignKey('category.category_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
     num = db.Column(db.SmallInteger, nullable=False, unique = True)
 
@@ -573,18 +576,20 @@ def borrowed_books():
         return jsonify({'status': 'no books borrowed currently'})
     return jsonify(result.data)
 
-#err: need fixing
+#err: needs extensive testing
 @app.route('/api/search_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def search_book():
     other_keys_checklist = ['author','translator','category']
     book_keys = []
+    books_keys_dic = {}
     other_keys = []
+    other_keys_dic = {}
     search = request.get_json()
     valid_keys = ['isbn','name','publish_year','edition','publisher_name','author','translator','category']
     if len(search) == 0:
-        books = Book.query.all()
-        result = books_schema.dump(books)
+        res = Book.query.all()
+        result = books_schema.dump(res)
         if len(result)==0:
             return jsonify({'status': 'no books in library'})
         return jsonify(result.data)
@@ -593,33 +598,84 @@ def search_book():
             return jsonify({'status': f'{k} is not a valid key'})
         if(not(k in other_keys_checklist)):
             book_keys.append(k)
+            books_keys_dic[k] = search[k]
         else:
             other_keys.append(k)
+            other_keys_dic[k] = search[k]
     if len(book_keys) == 0:
-        #filter by pop arguement
-        res = Book.query.filter_by()
-        while(res != None and len(other_keys)!= 0):
-            #filter and pop other_keys
-            pass
-        if(res == None):
+        res = Book.query.filter_by(**books_keys_dic).all()
+        if len(book_keys) == 0:
+            if(len(res) == 0):
+                return jsonify({'status': 'no result found'})
+            else:
+                result = books_schema.dump(res)
+                return jsonify(result.data)
+        if 'author' in book_keys:
+            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            for book in res:
+                for authbooks in books:
+                    if book.isbn == authbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if 'translator' in book_keys:
+            books = TranslatorBook.query.filter_by(author_name = other_keys_dic.get('translator'))
+            for book in res:
+                for transbooks in books:
+                    if book.isbn == transbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if 'category' in book_keys:
+            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            for book in res:
+                for authbooks in books:
+                    if book.isbn == authbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if(len(res) == 0):
             return jsonify({'status': 'no result found'})
         else:
-            #return list of books
-            pass
+           result = books_schema.dump(res)
+           return jsonify(result.data)
     else:
-        #filter by pop arguement
-        res = Book.query.filter_by()
-        while(res != None and len(book_keys)!= 0):
-            #filter and pop other_keys
-            pass
-        while(res != None and len(other_keys)!= 0):
-            #filter and pop other_keys
-            pass
-        if(res == None):
+        res = Book.query.filter_by(**books_keys_dic).all()
+        if len(book_keys) == 0:
+            if(len(res) ==  0):
+                return jsonify({'status': 'no result found'})
+            else:
+                result = books_schema.dump(res)
+                return jsonify(result.data)
+        if 'author' in book_keys:
+            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            for book in res:
+                for authbooks in books:
+                    if book.isbn == authbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if 'translator' in book_keys:
+            books = TranslatorBook.query.filter_by(author_name = other_keys_dic.get('translator'))
+            for book in res:
+                for transbooks in books:
+                    if book.isbn == transbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if 'category' in book_keys:
+            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            for book in res:
+                for authbooks in books:
+                    if book.isbn == authbooks.isbn:
+                        break
+                else:
+                    res.remove(book)
+        if(len(res) == 0):
             return jsonify({'status': 'no result found'})
         else:
-            #return list of books
-            pass
+            result = books_schema.dump(res)
+            return jsonify(result.data)
 
 #everyone routes
 @app.route('/api/login', methods=['POST'])
@@ -650,6 +706,11 @@ def login_admin():
     if verify_password(member_id, member_password):
         return jsonify({'status': 'ok'})
     return jsonify({'status': 'incorrect username or password'})
+
+@app.route('/api/test', methods=['GET'])
+def test():
+    res = Member.query.all()
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True)

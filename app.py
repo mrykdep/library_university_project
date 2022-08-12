@@ -9,9 +9,7 @@ import os
 from pathlib import Path
 
 #future: printing an identifier for books
-#future: printing membership card
 #future: books without category or author should be handeled in frontend
-#future: add id card generator
 #future: need to add status codes
 
 #IMPORTANT MUST READ: database should be created manually

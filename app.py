@@ -176,6 +176,13 @@ class Borrowed(db.Model):
         else:
             return False
 
+class BorrowedSchema(ma.Schema):
+    class Meta:
+        fields = ('isbn', 'member_id', 'borrow_date')
+
+borrowed_schema = BorrowedSchema()
+borrowedes_schema = BorrowedSchema(many=True)
+
 class Returned(db.Model):
     return_id = db.Column(db.BigInteger, primary_key=True)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
@@ -219,6 +226,13 @@ class Book(db.Model):
             return True
         else:
             return False
+
+class BookSchema(ma.Schema):
+    class Meta:
+        fields = ('isbn', 'name', 'publish_year', 'edition', 'publisher_name', 'quantity', 'remaining')
+
+book_schema = BookSchema()
+books_schema = BookSchema(many=True)
 
 class AuthorBook(db.Model):
     author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), primary_key=True)
@@ -283,6 +297,15 @@ def get_user_roles(member_id):
     return Member.get_role(member_id)
     
 #admin routes
+@app.route('/api/view_borrowed_books', methods=['GET'])
+@auth.login_required(role='admin')
+def view_borrowed_books():
+    borrowed = Borrowed.query.order_by(Borrowed.borrow_id).all()
+    result = borrowedes_schema.dump(borrowed)
+    if len(result)==0:
+        return jsonify({'status': 'no books borrowed currently'})
+    return jsonify(result.data)
+
 @app.route('/api/signup_admin', methods=['POST'])
 @auth.login_required(role='admin')
 def signup_admin():
@@ -320,7 +343,7 @@ def operator_renewal():
 
 @app.route('/api/cardpdfadmin', methods=['POST'])
 @auth.login_required(role='admin')
-def cardpdf():
+def cardpdfadmin():
     member_id = request.json['member_id']
     if (not Member.member_available(member_id)):
         return jsonify({'status': 'member is not available'})
@@ -336,7 +359,7 @@ def signup():
     member_phone = request.json['member_phone']
     member_password = request.json['member_password']
     if(not(check_phone(member_phone))):
-        return jsonify({'status': f'{check_phone(member_phone)}'})
+        return jsonify({'status': 'wrong phone number'})
     new_member = Member(member_name, member_phone, member_password)
     db.session.add(new_member)
     #config next_id for next user creation
@@ -386,13 +409,11 @@ def add_book():
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
     isbn = request.json['isbn']
-    operator_id = request.json['operator_id']
     member_id = request.json['member_id']
+    operator_id = auth.current_user()
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
-    if Member.member_available(operator_id):
-        return jsonify({'status': 'operator not found'})
     if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
         return jsonify({'status': 'operator expired'})
     if Member.member_available(member_id):
@@ -416,12 +437,10 @@ def borrow_book():
 @app.route('/api/return_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def return_book():
+    operator_id = auth.current_user()
     borrow_id = request.json['borrow_id']
-    operator_id = request.json['operator_id']
     if not Borrowed.borrow_id_available(borrow_id):
         return jsonify({'status': 'borrow id not found'})
-    if Member.member_available(operator_id):
-        return jsonify({'status': 'operator not found'})
     if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
         return jsonify({'status': 'operator expired'})
     new_return = Returned(borrow_id, operator_id)
@@ -523,14 +542,114 @@ def cardpdf():
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
 
 #user routes
+@app.route('/api/change_password', methods=['POST'])
+@auth.login_required(role=['admin', 'operator', 'user'])
+def change_password():
+    member_password = request.json['member_password']
+    member_id = auth.current_user()
+    member = Member.query.get(member_id)
+    member.member_password = hashlib.sha256(member_password.encode('ascii')).hexdigest()
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/change_phone', methods=['POST'])
+@auth.login_required(role=['admin', 'operator', 'user'])
+def change_phone():
+    member_phone = request.json['member_phone']
+    member_id = auth.current_user()
+    member = Member.query.get(member_id)
+    if check_phone(phone_number):
+        member.member_phone = member_phone
+        db.session.commit()
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'phone number incorrect'})
+
+@app.route('/api/borrowed_books', methods=['GET'])
+@auth.login_required(role=['admin', 'operator', 'user'])
+def borrowed_books():
+    borrowed = Borrowed.query.filter_by(member_id=f'{auth.current_user()}')
+    result = borrowedes_schema.dump(borrowed)
+    if len(result)==0:
+        return jsonify({'status': 'no books borrowed currently'})
+    return jsonify(result.data)
+
+#err: need fixing
+@app.route('/api/search_book', methods=['POST'])
+@auth.login_required(role=['admin', 'operator', 'user'])
+def search_book():
+    other_keys_checklist = ['author','translator','category']
+    book_keys = []
+    other_keys = []
+    search = request.get_json()
+    valid_keys = ['isbn','name','publish_year','edition','publisher_name','author','translator','category']
+    if len(search) == 0:
+        books = Book.query.all()
+        result = books_schema.dump(books)
+        if len(result)==0:
+            return jsonify({'status': 'no books in library'})
+        return jsonify(result.data)
+    for k in search:
+        if not(k in valid_keys):
+            return jsonify({'status': f'{k} is not a valid key'})
+        if(not(k in other_keys_checklist)):
+            book_keys.append(k)
+        else:
+            other_keys.append(k)
+    if len(book_keys) == 0:
+        #filter by pop arguement
+        res = Book.query.filter_by()
+        while(res != None and len(other_keys)!= 0):
+            #filter and pop other_keys
+            pass
+        if(res == None):
+            return jsonify({'status': 'no result found'})
+        else:
+            #return list of books
+            pass
+    else:
+        #filter by pop arguement
+        res = Book.query.filter_by()
+        while(res != None and len(book_keys)!= 0):
+            #filter and pop other_keys
+            pass
+        while(res != None and len(other_keys)!= 0):
+            #filter and pop other_keys
+            pass
+        if(res == None):
+            return jsonify({'status': 'no result found'})
+        else:
+            #return list of books
+            pass
+
+#everyone routes
 @app.route('/api/login', methods=['POST'])
 def login():
     member_id = request.json['member_id']
     member_password = request.json['member_password']
     if verify_password(member_id, member_password):
         return jsonify({'status': 'ok'})
-    else:
-        return jsonify({'status': 'incorrect username or password'})
+    return jsonify({'status': 'incorrect username or password'})
+
+@app.route('/api/login_operator', methods=['POST'])
+def login_operator():
+    member_id = request.json['member_id']
+    member_password = request.json['member_password']
+    member = Member.query.get(member_id)
+    if member.member_type == 'user':
+        return jsonify({'status': 'this member is not an operator'})
+    if verify_password(member_id, member_password):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'incorrect username or password'})
+
+@app.route('/api/login_admin', methods=['POST'])
+def login_admin():
+    member_id = request.json['member_id']
+    member_password = request.json['member_password']
+    if member.member_type != 'admin':
+        return jsonify({'status': 'this member is not an admin'})
+    if verify_password(member_id, member_password):
+        return jsonify({'status': 'ok'})
+    return jsonify({'status': 'incorrect username or password'})
 
 if __name__ == '__main__':
     app.run(debug=True)

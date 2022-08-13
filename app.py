@@ -627,7 +627,7 @@ def search_book():
                 else:
                     res.remove(book)
         if 'category' in book_keys:
-            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            books = CategoryBook.query.filter_by(category_name = other_keys_dic.get('category'))
             for book in res:
                 for authbooks in books:
                     if book.isbn == authbooks.isbn:
@@ -664,7 +664,7 @@ def search_book():
                 else:
                     res.remove(book)
         if 'category' in book_keys:
-            books = AuthorBook.query.filter_by(author_name = other_keys_dic.get('author'))
+            books = AuthorBook.query.filter_by(category_name = other_keys_dic.get('category'))
             for book in res:
                 for authbooks in books:
                     if book.isbn == authbooks.isbn:

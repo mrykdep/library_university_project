@@ -303,7 +303,7 @@ def get_user_roles(member_id):
     
 #admin routes
 #err: needs extensive testing
-@app.route('/api/report', methods=['GET'])
+@app.route('/api/admin/report', methods=['GET'])
 @auth.login_required(role='admin')
 def view_borrowed_books():
     returned_dic = {}
@@ -361,7 +361,7 @@ def view_borrowed_books():
     
 
 
-@app.route('/api/view_borrowed_books', methods=['GET'])
+@app.route('/api/admin/view_borrowed_books', methods=['GET'])
 @auth.login_required(role='admin')
 def view_borrowed_books():
     borrowed = Borrowed.query.order_by(Borrowed.borrow_id).all()
@@ -370,7 +370,7 @@ def view_borrowed_books():
         return jsonify({'status': 'no books borrowed currently'})
     return jsonify(result.data)
 
-@app.route('/api/signup_admin', methods=['POST'])
+@app.route('/api/admin/signup_admin', methods=['POST'])
 @auth.login_required(role='admin')
 def signup_admin():
     member_name = request.json['member_name']
@@ -391,7 +391,7 @@ def signup_admin():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/operator_renewal', methods=['POST'])
+@app.route('/api/admin/operator_renewal', methods=['POST'])
 @auth.login_required(role='admin')
 def operator_renewal():
     current_date = date.today()
@@ -406,7 +406,7 @@ def operator_renewal():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/cardpdfadmin', methods=['POST'])
+@app.route('/api/admin/cardpdfadmin', methods=['POST'])
 @auth.login_required(role='admin')
 def cardpdfadmin():
     member_id = request.json['member_id']
@@ -417,7 +417,7 @@ def cardpdfadmin():
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
 
 #operator routes
-@app.route('/api/signup', methods=['POST'])
+@app.route('/api/operator/signup', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def signup():
     member_name = request.json['member_name']
@@ -433,7 +433,7 @@ def signup():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/member_renewal', methods=['POST'])
+@app.route('/api/operator/member_renewal', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def member_renewal():
     current_date = date.today()
@@ -449,7 +449,7 @@ def member_renewal():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/add_book', methods=['POST'])
+@app.route('/api/operator/add_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_book():
     isbn = request.json['isbn']
@@ -472,7 +472,7 @@ def add_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/add_quantity', methods=['POST'])
+@app.route('/api/operator/add_quantity', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_quantity():
     isbn = request.json['isbn']
@@ -490,7 +490,7 @@ def add_quantity():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/borrow_book', methods=['POST'])
+@app.route('/api/operator/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
     isbn = request.json['isbn']
@@ -519,7 +519,7 @@ def borrow_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/return_book', methods=['POST'])
+@app.route('/api/operator/return_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def return_book():
     operator_id = auth.current_user()
@@ -535,7 +535,7 @@ def return_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/add_category', methods=['POST'])
+@app.route('/api/operator/add_category', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_category():
     category_name = request.json['category_name']
@@ -546,7 +546,7 @@ def add_category():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/add_author', methods=['POST'])
+@app.route('/api/operator/add_author', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_author():
     author_name = request.json['author_name']
@@ -557,7 +557,7 @@ def add_author():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/add_publisher', methods=['POST'])
+@app.route('/api/operator/add_publisher', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_publisher():
     publisher_name = request.json['publisher_name']
@@ -568,7 +568,7 @@ def add_publisher():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/author_book', methods=['POST'])
+@app.route('/api/operator/author_book', methods=['POST'])
 def author_book():
     author_name = request.json['author_name']
     isbn = request.json['isbn']
@@ -584,7 +584,7 @@ def author_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/translator_book', methods=['POST'])
+@app.route('/api/operator/translator_book', methods=['POST'])
 def translator_book():
     translator_name = request.json['translator_name']
     isbn = request.json['isbn']
@@ -600,7 +600,7 @@ def translator_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/category_book', methods=['POST'])
+@app.route('/api/operator/category_book', methods=['POST'])
 def category_book():
     category_name = request.json['category_name']
     isbn = request.json['isbn']
@@ -616,7 +616,7 @@ def category_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/cardpdf', methods=['POST'])
+@app.route('/api/operator/cardpdf', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def cardpdf():
     member_id = request.json['member_id']
@@ -627,7 +627,7 @@ def cardpdf():
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
 
 #user routes
-@app.route('/api/change_password', methods=['POST'])
+@app.route('/api/user/change_password', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def change_password():
     member_password = request.json['member_password']
@@ -637,7 +637,7 @@ def change_password():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-@app.route('/api/change_phone', methods=['POST'])
+@app.route('/api/user/change_phone', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def change_phone():
     member_phone = request.json['member_phone']
@@ -649,7 +649,7 @@ def change_phone():
         return jsonify({'status': 'ok'})
     return jsonify({'status': 'phone number incorrect'})
 
-@app.route('/api/borrowed_books', methods=['GET'])
+@app.route('/api/user/borrowed_books', methods=['GET'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def borrowed_books():
     borrowed = Borrowed.query.filter_by(member_id=f'{auth.current_user()}')
@@ -659,7 +659,7 @@ def borrowed_books():
     return jsonify(result.data)
 
 #err: needs extensive testing
-@app.route('/api/search_book', methods=['POST'])
+@app.route('/api/user/search_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def search_book():
     other_keys_checklist = ['author','translator','category']
@@ -788,11 +788,6 @@ def login_admin():
     if verify_password(member_id, member_password):
         return jsonify({'status': 'ok'})
     return jsonify({'status': 'incorrect username or password'})
-
-@app.route('/api/test', methods=['GET'])
-def test():
-    res = Member.query.all()
-    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -123,13 +123,13 @@ class Member(db.Model):
     def get_role(member_id):
         return Member.query.get(member_id).member_type
     
-    def increment_next_id():
-        current_date = date.today()
-        current_id = TempID.query.get(1)
-        if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
-            current_id.next_id += 1
-        else:
-            current_id.next_id = int(str(date.today().year)[2:] + '0000000')
+    # def increment_next_id():
+    #     current_date = date.today()
+    #     current_id = TempID.query.get(1)
+    #     if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
+    #         current_id.next_id += 1
+    #     else:
+    #         current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     
     def borrowed_number(member_id):
         return Member.query.get(member_id).borrow_book
@@ -296,7 +296,12 @@ if(not os.path.isfile('configed')):
     new_member.member_type = 'admin'
     db.session.add(new_member)
     #config next_id for next user creation
-    Member.increment_next_id()
+    current_date = date.today()
+    current_id = TempID.query.get(1)
+    if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
+        current_id.next_id += 1
+    else:
+        current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
     fp = open('configed', 'x')
     fp.close()
@@ -400,6 +405,13 @@ def signup_admin():
     else:
         new_member.member_id += 1000000000
     db.session.add(new_member)
+    #config next_id for next user creation
+    current_date = date.today()
+    current_id = TempID.query.get(1)
+    if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
+        current_id.next_id += 1
+    else:
+        current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -441,7 +453,12 @@ def signup():
     new_member.operator_id = auth.current_user()
     db.session.add(new_member)
     #config next_id for next user creation
-    Member.increment_next_id()
+    current_date = date.today()
+    current_id = TempID.query.get(1)
+    if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
+        current_id.next_id += 1
+    else:
+        current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -803,4 +820,4 @@ def login_admin():
     return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)

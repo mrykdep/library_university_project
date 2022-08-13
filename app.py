@@ -305,7 +305,7 @@ def get_user_roles(member_id):
 #err: needs extensive testing
 @app.route('/api/admin/report', methods=['GET'])
 @auth.login_required(role='admin')
-def view_borrowed_books():
+def report():
     returned_dic = {}
     returned_operator_dic = {}
     returned = Returned.query.order_by(Returned.isbn).all()
@@ -783,6 +783,7 @@ def login_operator():
 def login_admin():
     member_id = request.json['member_id']
     member_password = request.json['member_password']
+    member = Member.query.get(member_id)
     if member.member_type != 'admin':
         return jsonify({'status': 'this member is not an admin'})
     if verify_password(member_id, member_password):

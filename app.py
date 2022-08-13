@@ -408,6 +408,23 @@ def add_book():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+@app.route('/api/add_quantity', methods=['POST'])
+@auth.login_required(role=['admin', 'operator'])
+def add_quantity():
+    isbn = request.json['isbn']
+    added_quantity = request.json['added_quantity']
+    isbn = fix_isbn(isbn)
+    if not bool(isbn[0]):
+        return jsonify({'status': f'{isbn[1]}'})
+    if not Book.available(isbn):
+        return jsonify({'status': 'book not in library'})
+    isbn = isbn[0]
+    book = Book.query.get(isbn)
+    book.quantity += added_quantity
+    book.available += added_quantity
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
 @app.route('/api/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():

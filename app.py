@@ -8,9 +8,7 @@ from card_gen.gen import cardgen
 import os
 from pathlib import Path
 
-#future: printing an identifier for books
 #future: books without category or author should be handeled in frontend
-#future: need to add status codes
 
 #IMPORTANT MUST READ: database should be created manually
 #config values
@@ -94,6 +92,8 @@ class Member(db.Model):
         self.borrowed_books = 0
 
     def is_valid(member_id,member_password):
+        if len(Member.query.filter_by(member_id = member_id).all())==0:
+            return False
         current_date = date.today()
         if Member.query.get(member_id).member_password == member_password and Member.query.get(member_id).member_type == 'admin':
             return True
@@ -378,9 +378,9 @@ def signup_admin():
     member_password = request.json['member_password']
     member_type = request.json['member_type']
     if(not(check_phone(member_phone))):
-        return jsonify({'status': 'wrong phone number'})
+        return jsonify({'status': 'wrong phone number'}),400
     if member_type != 'operator' and member_type!= 'admin':
-        return jsonify({'status': 'type is not an operator or admin'})
+        return jsonify({'status': 'type is not an operator or admin'}),400
     new_member = Member(member_name, member_phone, member_password)
     new_member.member_type = member_type
     if member_type == 'admin':
@@ -397,9 +397,9 @@ def operator_renewal():
     current_date = date.today()
     member_id = request.json['member_id']
     if not Member.member_available(member_id):
-        return jsonify({'status': 'operator not found'})
+        return jsonify({'status': 'operator not found'}),400
     if Member.get_role(member_id)!= 'operator':
-        return jsonify({'status': 'member is not an operator'})
+        return jsonify({'status': 'member is not an operator'}),400
     renewal = Member.query.get(member_id)
     renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
     renewal.operator_id = auth.current_user()
@@ -411,7 +411,7 @@ def operator_renewal():
 def cardpdfadmin():
     member_id = request.json['member_id']
     if (not Member.member_available(member_id)):
-        return jsonify({'status': 'member is not available'})
+        return jsonify({'status': 'member is not available'}),400
     member = Member.query.get(member_id)
     cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
@@ -424,7 +424,7 @@ def signup():
     member_phone = request.json['member_phone']
     member_password = request.json['member_password']
     if(not(check_phone(member_phone))):
-        return jsonify({'status': 'wrong phone number'})
+        return jsonify({'status': 'wrong phone number'}),400
     new_member = Member(member_name, member_phone, member_password)
     new_member.operator_id = auth.current_user()
     db.session.add(new_member)
@@ -439,11 +439,11 @@ def member_renewal():
     current_date = date.today()
     member_id = request.json['member_id']
     if not Member.member_available(member_id):
-        return jsonify({'status': 'member not found'})
+        return jsonify({'status': 'member not found'}),400
     if Member.get_role(member_id)== 'operator':
-        return jsonify({'status': 'member is an operator'})
+        return jsonify({'status': 'member is an operator'}),400
     if Member.get_role(member_id)== 'admin':
-        return jsonify({'status': 'member is an admin'})
+        return jsonify({'status': 'member is an admin'}),400
     renewal = Member.query.get(member_id)
     renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
     db.session.commit()
@@ -460,11 +460,11 @@ def add_book():
     quantity = request.json['quantity']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
-        return jsonify({'status': f'{isbn[1]}'})
+        return jsonify({'status': f'{isbn[1]}'}),400
     if not Publisher.publisher_available(publisher_name):
-        return jsonify({'status': 'publisher not found'})
+        return jsonify({'status': 'publisher not found'}),400
     if Book.available(isbn):
-        return jsonify({'status': 'book already added'})
+        return jsonify({'status': 'book already added'}),400
     isbn = isbn[0]
     new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity)
     new_book.operator_id = auth.current_user()
@@ -479,9 +479,9 @@ def add_quantity():
     added_quantity = request.json['added_quantity']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
-        return jsonify({'status': f'{isbn[1]}'})
+        return jsonify({'status': f'{isbn[1]}'}),400
     if not Book.available(isbn):
-        return jsonify({'status': 'book not in library'})
+        return jsonify({'status': 'book not in library'}),400
     isbn = isbn[0]
     book = Book.query.get(isbn)
     book.quantity += added_quantity
@@ -500,16 +500,16 @@ def borrow_book():
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'})
     if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
-        return jsonify({'status': 'operator expired'})
+        return jsonify({'status': 'operator expired'}),401
     if Member.member_available(member_id):
-        return jsonify({'status': 'member not found'})
+        return jsonify({'status': 'member not found'}),400
     if Member.member_available(member_id) and not Member.is_valid(member_id, Member.query.get(member_id).member_password):
-        return jsonify({'status': 'member expired'})
+        return jsonify({'status': 'member expired'}),400
     isbn = isbn[0]
     if not Book.available(isbn):
-        return jsonify({'status': 'all books of this isbn are borrowed'})
+        return jsonify({'status': 'all books of this isbn are borrowed'}),400
     if Member.query.get(member_id).borrowed_books >= MAX_BORROW:
-        return jsonify({'status': 'user borrowed max possible books'})
+        return jsonify({'status': 'user borrowed max possible books'}),400
     new_borrow = Borrowed(isbn, operator_id, member_id)
     db.session.add(new_borrow)
     book = Book.query.get(isbn)
@@ -525,9 +525,9 @@ def return_book():
     operator_id = auth.current_user()
     borrow_id = request.json['borrow_id']
     if not Borrowed.borrow_id_available(borrow_id):
-        return jsonify({'status': 'borrow id not found'})
+        return jsonify({'status': 'borrow id not found'}),400
     if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
-        return jsonify({'status': 'operator expired'})
+        return jsonify({'status': 'operator expired'}),401
     new_return = Returned(borrow_id, operator_id)
     old_borrow = Borrowed.query.get(borrow_id)
     db.session.delete(old_borrow)
@@ -540,7 +540,7 @@ def return_book():
 def add_category():
     category_name = request.json['category_name']
     if Category.category_available(category_name):
-        return jsonify({'status': 'category already added'})
+        return jsonify({'status': 'category already added'}),400
     new_category = Category(category_name)
     db.session.add(new_category)
     db.session.commit()
@@ -551,7 +551,7 @@ def add_category():
 def add_author():
     author_name = request.json['author_name']
     if Author.author_available(author_name):
-        return jsonify({'status': 'author already added'})
+        return jsonify({'status': 'author already added'}),400
     new_author = Author(author_name)
     db.session.add(new_author)
     db.session.commit()
@@ -562,7 +562,7 @@ def add_author():
 def add_publisher():
     publisher_name = request.json['publisher_name']
     if Publisher.publisher_available(publisher_name):
-        return jsonify({'status': 'publisher already added'})
+        return jsonify({'status': 'publisher already added'}),400
     new_publisher = Publisher(publisher_name)
     db.session.add(new_publisher)
     db.session.commit()
@@ -574,9 +574,9 @@ def author_book():
     isbn = request.json['isbn']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
-        return jsonify({'status': f'{isbn[1]}'})
+        return jsonify({'status': f'{isbn[1]}'}),400
     if not Author.author_available(author_name):
-        return jsonify({'status': 'author not found'})
+        return jsonify({'status': 'author not found'}),400
     isbn = isbn[0]
     num = request.json['num']
     new_author_book = AuthorBook(author_name, isbn, num)
@@ -591,9 +591,9 @@ def translator_book():
     num = request.json['num']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
-        return jsonify({'status': f'{isbn[1]}'})
+        return jsonify({'status': f'{isbn[1]}'}),400
     if not Author.author_available(translator_name):
-        return jsonify({'status': 'translator not found'})
+        return jsonify({'status': 'translator not found'}),400
     isbn = isbn[0]
     new_translator_book = TranslatorBook(translator_name, isbn, num)
     db.session.add(new_translator_book)
@@ -606,9 +606,9 @@ def category_book():
     isbn = request.json['isbn']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
-        return jsonify({'status': f'{isbn[1]}'})
+        return jsonify({'status': f'{isbn[1]}'}),400
     if not Category.category_available(category_name):
-        return jsonify({'status': 'category not found'})
+        return jsonify({'status': 'category not found'}),400
     isbn = isbn[0]
     num = request.json['num']
     new_category_book = CategoryBook(category_name, isbn, num)
@@ -621,7 +621,7 @@ def category_book():
 def cardpdf():
     member_id = request.json['member_id']
     if (not Member.member_available(member_id)) and (not Member.query.get(member_id).member_type == 'user'):
-        return jsonify({'status': 'member is not user or member is not available'})
+        return jsonify({'status': 'member is not user or member is not available'}),400
     member = Member.query.get(member_id)
     cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
@@ -647,7 +647,7 @@ def change_phone():
         member.member_phone = member_phone
         db.session.commit()
         return jsonify({'status': 'ok'})
-    return jsonify({'status': 'phone number incorrect'})
+    return jsonify({'status': 'phone number incorrect'}),400
 
 @app.route('/api/user/borrowed_books', methods=['GET'])
 @auth.login_required(role=['admin', 'operator', 'user'])
@@ -677,7 +677,7 @@ def search_book():
         return jsonify(result.data)
     for k in search:
         if not(k in valid_keys):
-            return jsonify({'status': f'{k} is not a valid key'})
+            return jsonify({'status': f'{k} is not a valid key'}),400
         if(not(k in other_keys_checklist)):
             book_keys.append(k)
             books_keys_dic[k] = search[k]
@@ -766,29 +766,29 @@ def login():
     member_password = request.json['member_password']
     if verify_password(member_id, member_password):
         return jsonify({'status': 'ok'})
-    return jsonify({'status': 'incorrect username or password'})
+    return jsonify({'status': 'incorrect username or password'}),401
 
 @app.route('/api/login_operator', methods=['POST'])
 def login_operator():
     member_id = request.json['member_id']
     member_password = request.json['member_password']
+    if not verify_password(member_id, member_password):
+        return jsonify({'status': 'incorrect username or password'}),401
     member = Member.query.get(member_id)
     if member.member_type == 'user':
-        return jsonify({'status': 'this member is not an operator'})
-    if verify_password(member_id, member_password):
-        return jsonify({'status': 'ok'})
-    return jsonify({'status': 'incorrect username or password'})
+        return jsonify({'status': 'this member is not an operator'}),403
+    return jsonify({'status': 'ok'})
 
 @app.route('/api/login_admin', methods=['POST'])
 def login_admin():
     member_id = request.json['member_id']
     member_password = request.json['member_password']
+    if not verify_password(member_id, member_password):
+        return jsonify({'status': 'incorrect username or password'}),401
     member = Member.query.get(member_id)
     if member.member_type != 'admin':
-        return jsonify({'status': 'this member is not an admin'})
-    if verify_password(member_id, member_password):
-        return jsonify({'status': 'ok'})
-    return jsonify({'status': 'incorrect username or password'})
+        return jsonify({'status': 'this member is not an admin'}),403
+    return jsonify({'status': 'ok'})
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -76,6 +76,7 @@ class Member(db.Model):
     member_type = db.Column(db.String(8), nullable=False)
     member_expire_date = db.Column(db.Date, nullable=False)
     borrowed_books = db.Column(db.SmallInteger, nullable=False)
+    operator_id = db.Column(db.BigInteger)
 
     def __init__(self, member_name, member_phone, member_password):
         current_date = date.today()
@@ -206,10 +207,11 @@ class Book(db.Model):
     name = db.Column(db.String(200), nullable=False)
     publish_year = db.Column(db.SmallInteger, nullable=False)
     edition = db.Column(db.SmallInteger, nullable=False)
-    publisher_name = db.Column(db.String(200), db.ForeignKey('publisher.publisher_name'), primary_key=True)
+    publisher_name = db.Column(db.String(200), db.ForeignKey('publisher.publisher_name'), nullable = False)
     quantity = db.Column(db.SmallInteger, nullable=False)
     remaining = db.Column(db.SmallInteger, nullable=False)
     adding_date = db.Column(db.Date, nullable=False)
+    operator_id = db.Column(db.BigInteger, db.ForeignKey('member.member_id'), nullable = False)
 
     def __init__(self, isbn,name, publish_year, edition, publisher_name, quantity, adding_date):
         self.isbn = isbn
@@ -238,7 +240,7 @@ class AuthorBook(db.Model):
     author_book_id = db.Column(db.BigInteger, primary_key=True)
     author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
-    num = db.Column(db.SmallInteger, nullable=False, unique = True)
+    num = db.Column(db.SmallInteger, nullable=False)
 
     def __init__(self, author_name, isbn, num):
         self.author_name = author_name
@@ -249,7 +251,7 @@ class TranslatorBook(db.Model):
     translator_book_id = db.Column(db.BigInteger, primary_key=True)
     author_name = db.Column(db.String(200), db.ForeignKey('author.author_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
-    num = db.Column(db.SmallInteger, nullable=False, unique = True)
+    num = db.Column(db.SmallInteger, nullable=False)
 
     def __init__(self, author_name, isbn, num):
         self.author_name = author_name
@@ -260,7 +262,7 @@ class CategoryBook(db.Model):
     category_book_id = db.Column(db.BigInteger, primary_key=True)
     category_name = db.Column(db.String(200), db.ForeignKey('category.category_name'), nullable=False)
     isbn = db.Column(db.String(13), db.ForeignKey('book.isbn'), nullable=False)
-    num = db.Column(db.SmallInteger, nullable=False, unique = True)
+    num = db.Column(db.SmallInteger, nullable=False)
 
     def __init__(self, category_name, isbn, num):
         self.category_name = category_name
@@ -300,6 +302,65 @@ def get_user_roles(member_id):
     return Member.get_role(member_id)
     
 #admin routes
+#err: needs extensive testing
+@app.route('/api/report', methods=['GET'])
+@auth.login_required(role='admin')
+def view_borrowed_books():
+    returned_dic = {}
+    returned_operator_dic = {}
+    returned = Returned.query.order_by(Returned.isbn).all()
+    for check in returned:
+        if check.isbn in returned_dic:
+            returned_dic[check.isbn] += 1
+        else:
+            returned_dic[check.isbn] = 1
+        if check.operator_id_return in returned_operator_dic:
+            returned_operator_dic[check.operator_id_return] +=1
+        else:
+            returned_operator_dic[check.operator_id_return] =1
+    
+    borrowed = Borrowed.query.order_by(Borrowed.isbn).all()
+    for check in borrowed:
+        if check.isbn in returned_dic:
+            returned_dic[check.isbn] += 1
+        else:
+            returned_dic[check.isbn] = 1
+        if check.operator_id in returned_operator_dic:
+            returned_operator_dic[check.operator_id] +=1
+        else:
+            returned_operator_dic[check.operator_id] =1
+
+    if len(returned_dic) == 0:
+        max_book = [0,0]
+    else:
+        max_book = max(returned_dic, key=returned_dic.get)
+        max_book = [max_book, returned_dic.get(max_book)]
+    if len(returned_operator_dic) == 0:
+        max_returned = [0,0]
+    else:
+        max_returned = max(returned_operator_dic, key=returned_operator_dic.get)
+        max_returned = [max_returned, returned_operator_dic.get(max_returned)]
+
+    member_dic = {}
+    members = Returned.query.order_by(Returned.isbn).all()
+    for check in members:
+        if check.operator_id in member_dic:
+            member_dic[check.operator_id] += 1
+        else:
+            member_dic[check.operator_id] = 1
+    if len(member_dic) == 0:
+        max_member = [0,0]
+    else:
+        max_member = max(member_dic, key=member_dic.get)
+        max_member = [max_member, member_dic.get(max_member)]
+    
+    report = f"""Operator {max_member[0]} added most members: {max_member[1]}
+    Operator {max_returned[0]} added most borrows and returns: {max_returned[1]}
+    Book {max_book[0]} is the most borrowed book: {max_book[1]}"""
+    return jsonify({'status': report})
+    
+
+
 @app.route('/api/view_borrowed_books', methods=['GET'])
 @auth.login_required(role='admin')
 def view_borrowed_books():
@@ -341,6 +402,7 @@ def operator_renewal():
         return jsonify({'status': 'member is not an operator'})
     renewal = Member.query.get(member_id)
     renewal.member_expire_date = renewal.member_expire_date.replace(year = renewal.member_expire_date.year + DEFAULT_MEMBERSHIP_YEARS)
+    renewal.operator_id = auth.current_user()
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -364,6 +426,7 @@ def signup():
     if(not(check_phone(member_phone))):
         return jsonify({'status': 'wrong phone number'})
     new_member = Member(member_name, member_phone, member_password)
+    new_member.operator_id = auth.current_user()
     db.session.add(new_member)
     #config next_id for next user creation
     Member.increment_next_id()
@@ -404,6 +467,7 @@ def add_book():
         return jsonify({'status': 'book already added'})
     isbn = isbn[0]
     new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity)
+    new_book.operator_id = auth.current_user()
     db.session.add(new_book)
     db.session.commit()
     return jsonify({'status': 'ok'})
@@ -422,6 +486,7 @@ def add_quantity():
     book = Book.query.get(isbn)
     book.quantity += added_quantity
     book.available += added_quantity
+    book.operator_id = auth.current_user()
     db.session.commit()
     return jsonify({'status': 'ok'})
 

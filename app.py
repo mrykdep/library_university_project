@@ -59,6 +59,18 @@ def check_phone(phone_number):
     else:
         return True
 
+#error handler config
+app.config['TRAP_HTTP_EXCEPTIONS']=True
+@app.errorhandler(Exception)
+def handle_error(e):
+    try:
+        if e.code == 404:
+            return jsonify({'status': 'ERROR: Page Not Found'}),404
+        elif e.code == 405:
+            return jsonify({'status': 'ERROR: Method not available'}),405
+    except:
+        return jsonify({'status': f'ERROR: Unknow error. report to admin. error code:{e.code}'}),500
+
 #classes
 class TempID(db.Model):
     master_key = db.Column(db.SmallInteger, primary_key=True)

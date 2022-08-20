@@ -15,6 +15,7 @@ pdfkit = "*"
 code128 = "*"
 qrcode = {extras = ["pil"], version = "*"}
 requests = "*"
+flask-cors = "*"
 
 [dev-packages]
 

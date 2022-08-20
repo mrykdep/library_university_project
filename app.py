@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_marshmallow import Marshmallow
 from flask_httpauth import HTTPBasicAuth
 from card_gen.gen import cardgen
+from flask_cors import CORS
 import os
 from pathlib import Path
 
@@ -17,12 +18,14 @@ DEFAULT_MEMBERSHIP_YEARS = 1
 DATABASE_USERNAME = 'pedram'
 DATABASE_PASSWORD = 'Project.4003'
 DATABASE_NAME = 'library'
-MAX_BORROW = 5
+#err for test only return to 5
+MAX_BORROW = 100
 ADMIN_NAME = 'Pedram Akbari'
 ADMIN_PASSWORD = 'Project.4003'
 ADMIN_PHONE = '+989015155598'
 
 app = Flask(__name__)
+CORS(app, support_credentials=True)
 url = f'mysql://{DATABASE_USERNAME}:{DATABASE_PASSWORD}@localhost/{DATABASE_NAME}'
 
 #mysql databse config
@@ -68,8 +71,10 @@ def handle_error(e):
             return jsonify({'status': 'ERROR: Page Not Found'}),404
         elif e.code == 405:
             return jsonify({'status': 'ERROR: Method not available'}),405
+        else:
+            return jsonify({'status': f'ERROR: Unknow error. report to admin. error:{e}'}),500
     except:
-        return jsonify({'status': f'ERROR: Unknow error. report to admin. error code:{e.code}'}),500
+        return jsonify({'status': f'ERROR: Unknow error. report to admin. error:{e}'}),500
 
 #classes
 class TempID(db.Model):
@@ -240,6 +245,12 @@ class Book(db.Model):
             return True
         else:
             return False
+    def is_available(isbn):
+        if Book.query.get(isbn):
+            return True
+        else:
+            return False
+
 
 class BookSchema(ma.Schema):
     class Meta:
@@ -372,12 +383,10 @@ def report():
         max_member = [max_member, member_dic.get(max_member)]
     
     report = f"""Operator {max_member[0]} added most members: {max_member[1]}
-    Operator {max_returned[0]} added most borrows and returns: {max_returned[1]}
-    Book {max_book[0]} is the most borrowed book: {max_book[1]}"""
-    return jsonify({'status': report})
+Operator {max_returned[0]} added most borrows and returns: {max_returned[1]}
+Book {max_book[0]} is the most borrowed book: {max_book[1]}"""
+    return jsonify({'status': 'ok', 'msg': report})
     
-
-
 @app.route('/api/admin/view_borrowed_books', methods=['GET'])
 @auth.login_required(role='admin')
 def view_borrowed_books():
@@ -413,6 +422,7 @@ def signup_admin():
     else:
         current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
+    print(new_member.member_id)
     return jsonify({'status': 'ok'})
 
 @app.route('/api/admin/operator_renewal', methods=['POST'])
@@ -438,7 +448,8 @@ def cardpdfadmin():
         return jsonify({'status': 'member is not available'}),400
     member = Member.query.get(member_id)
     cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
-    return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
+    print(f'{Path().absolute()}/card_gen/res/card.pdf')
+    return send_file(f'{Path().absolute()}/card_gen/res/card.pdf', mimetype='application/pdf')
 
 #operator routes
 @app.route('/api/operator/signup', methods=['POST'])
@@ -481,6 +492,7 @@ def member_renewal():
 @app.route('/api/operator/add_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def add_book():
+    current_date = date.today()
     isbn = request.json['isbn']
     name = request.json['name']
     publish_year = request.json['publish_year']
@@ -490,12 +502,12 @@ def add_book():
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'}),400
+    isbn = isbn[0]
     if not Publisher.publisher_available(publisher_name):
         return jsonify({'status': 'publisher not found'}),400
-    if Book.available(isbn):
+    if Book.is_available(isbn):
         return jsonify({'status': 'book already added'}),400
-    isbn = isbn[0]
-    new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity)
+    new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity,current_date)
     new_book.operator_id = auth.current_user()
     db.session.add(new_book)
     db.session.commit()
@@ -509,9 +521,9 @@ def add_quantity():
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'}),400
+    isbn = isbn[0]
     if not Book.available(isbn):
         return jsonify({'status': 'book not in library'}),400
-    isbn = isbn[0]
     book = Book.query.get(isbn)
     book.quantity += added_quantity
     book.available += added_quantity
@@ -519,6 +531,7 @@ def add_quantity():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+#err: check book is valid
 @app.route('/api/operator/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
@@ -530,9 +543,9 @@ def borrow_book():
         return jsonify({'status': f'{isbn[1]}'})
     if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
         return jsonify({'status': 'operator expired'}),401
-    if Member.member_available(member_id):
+    if not Member.member_available(member_id):
         return jsonify({'status': 'member not found'}),400
-    if Member.member_available(member_id) and not Member.is_valid(member_id, Member.query.get(member_id).member_password):
+    if not Member.is_valid(member_id, Member.query.get(member_id).member_password):
         return jsonify({'status': 'member expired'}),400
     isbn = isbn[0]
     if not Book.available(isbn):
@@ -672,7 +685,7 @@ def change_phone():
     member_phone = request.json['member_phone']
     member_id = auth.current_user()
     member = Member.query.get(member_id)
-    if check_phone(phone_number):
+    if check_phone(member_phone):
         member.member_phone = member_phone
         db.session.commit()
         return jsonify({'status': 'ok'})
@@ -818,6 +831,6 @@ def login_admin():
     if member.member_type != 'admin':
         return jsonify({'status': 'this member is not an admin'}),403
     return jsonify({'status': 'ok'})
-
+    
 if __name__ == '__main__':
     app.run(debug=False)

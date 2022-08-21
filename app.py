@@ -18,8 +18,7 @@ DEFAULT_MEMBERSHIP_YEARS = 1
 DATABASE_USERNAME = 'pedram'
 DATABASE_PASSWORD = 'Project.4003'
 DATABASE_NAME = 'library'
-#err for test only return to 5
-MAX_BORROW = 100
+MAX_BORROW = 5
 ADMIN_NAME = 'Pedram Akbari'
 ADMIN_PASSWORD = 'Project.4003'
 ADMIN_PHONE = '+989015155598'
@@ -131,14 +130,6 @@ class Member(db.Model):
     def get_role(member_id):
         return Member.query.get(member_id).member_type
     
-    # def increment_next_id():
-    #     current_date = date.today()
-    #     current_id = TempID.query.get(1)
-    #     if(str(current_id.next_id)[0:2] == str(current_date.year)[2:]):
-    #         current_id.next_id += 1
-    #     else:
-    #         current_id.next_id = int(str(date.today().year)[2:] + '0000000')
-    
     def borrowed_number(member_id):
         return Member.query.get(member_id).borrow_book
 
@@ -215,12 +206,13 @@ class Returned(db.Model):
 
     def __init__(self, borrow_id, operator_id_return):
         current_date = date.today()
-        delta = current_date - Borrowed.query.get(borrow_id).borrow_date - timedelta(days=DEFAULT_BORROW_DAYS)
+        delta = current_date - (Borrowed.query.get(borrow_id).borrow_date) - (timedelta(days=DEFAULT_BORROW_DAYS))
         self.isbn = Borrowed.query.get(borrow_id).isbn
         self.operator_id = Borrowed.query.get(borrow_id).operator_id
         self.operator_id_return = operator_id_return
+        self.member_id = Borrowed.query.get(borrow_id).member_id
         self.return_date = current_date
-        self.penalty_days = 0 if delta.days() <= 0 else delta.days()
+        self.penalty_days = 0 if (delta.days <= 0) else delta.days
 
 class Book(db.Model):
     isbn = db.Column(db.String(13), primary_key=True)
@@ -333,7 +325,7 @@ def get_user_roles(member_id):
     return Member.get_role(member_id)
     
 #admin routes
-#err: needs extensive testing
+#err: needs testing of operator added most member
 @app.route('/api/admin/report', methods=['GET'])
 @auth.login_required(role='admin')
 def report():
@@ -526,8 +518,8 @@ def add_quantity():
     if not Book.available(isbn):
         return jsonify({'status': 'book not in library'}),400
     book = Book.query.get(isbn)
-    book.quantity += added_quantity
-    book.available += added_quantity
+    book.quantity = int(book.quantity) + (int(added_quantity))
+    book.remaining = int(book.remaining) + (int(added_quantity))
     book.operator_id = auth.current_user()
     db.session.commit()
     return jsonify({'status': 'ok'})
@@ -549,6 +541,8 @@ def borrow_book():
     if not Member.is_valid(member_id, Member.query.get(member_id).member_password):
         return jsonify({'status': 'member expired'}),400
     isbn = isbn[0]
+    if not Book.is_available(isbn):
+        return jsonify({'status': 'this isbn is not valid'}),400
     if not Book.available(isbn):
         return jsonify({'status': 'all books of this isbn are borrowed'}),400
     if Member.query.get(member_id).borrowed_books >= MAX_BORROW:
@@ -569,8 +563,8 @@ def return_book():
     borrow_id = request.json['borrow_id']
     if not Borrowed.borrow_id_available(borrow_id):
         return jsonify({'status': 'borrow id not found'}),400
-    if Member.member_available(operator_id) and not Member.is_valid(member_id, Member.query.get(operator_id).member_password):
-        return jsonify({'status': 'operator expired'}),401
+    if not Member.member_available(operator_id):
+        return jsonify({'status': 'operator not found'}),401
     new_return = Returned(borrow_id, operator_id)
     old_borrow = Borrowed.query.get(borrow_id)
     db.session.delete(old_borrow)
@@ -664,8 +658,10 @@ def category_book():
 @auth.login_required(role=['admin', 'operator'])
 def cardpdf():
     member_id = request.json['member_id']
-    if (not Member.member_available(member_id)) and (not Member.query.get(member_id).member_type == 'user'):
-        return jsonify({'status': 'member is not user or member is not available'}),400
+    if not Member.member_available(member_id):
+        return jsonify({'status': 'member is not available'}),400
+    if Member.query.get(member_id).member_type != 'user':
+        return jsonify({'status': 'member is not user'}),400
     member = Member.query.get(member_id)
     cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
@@ -700,7 +696,6 @@ def borrowed_books():
     result = borrowedes_schema.dump(borrowed)
     return jsonify(result)
 
-#err: needs more testing
 @app.route('/api/user/search_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def search_book():

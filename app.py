@@ -325,7 +325,6 @@ def get_user_roles(member_id):
     return Member.get_role(member_id)
     
 #admin routes
-#err: needs testing of operator added most member
 @app.route('/api/admin/report', methods=['GET'])
 @auth.login_required(role='admin')
 def report():
@@ -497,7 +496,8 @@ def add_book():
         return jsonify({'status': f'{isbn[1]}'}),400
     isbn = isbn[0]
     if not Publisher.publisher_available(publisher_name):
-        return jsonify({'status': 'publisher not found'}),400
+        new_publisher = Publisher(publisher_name)
+        db.session.add(new_publisher)
     if Book.is_available(isbn):
         return jsonify({'status': 'book already added'}),400
     new_book = Book(isbn,name,publish_year,edition,publisher_name,quantity,current_date)
@@ -505,6 +505,7 @@ def add_book():
     db.session.add(new_book)
     db.session.commit()
     return jsonify({'status': 'ok'})
+
 
 @app.route('/api/operator/add_quantity', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
@@ -524,7 +525,6 @@ def add_quantity():
     db.session.commit()
     return jsonify({'status': 'ok'})
 
-#err: check book is valid
 @app.route('/api/operator/borrow_book', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])
 def borrow_book():
@@ -609,14 +609,15 @@ def add_publisher():
 def author_book():
     author_name = request.json['author_name']
     isbn = request.json['isbn']
+    num = request.json['num']
     isbn = str(isbn)
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'}),400
-    if not Author.author_available(author_name):
-        return jsonify({'status': 'author not found'}),400
     isbn = isbn[0]
-    num = request.json['num']
+    if not Author.author_available(author_name):
+        new_author = Author(author_name)
+        db.session.add(new_author)
     new_author_book = AuthorBook(author_name, isbn, num)
     db.session.add(new_author_book)
     db.session.commit()
@@ -630,9 +631,10 @@ def translator_book():
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'}),400
-    if not Author.author_available(translator_name):
-        return jsonify({'status': 'translator not found'}),400
     isbn = isbn[0]
+    if not Author.author_available(translator_name):
+        new_author = Author(translator_name)
+        db.session.add(new_author)
     new_translator_book = TranslatorBook(translator_name, isbn, num)
     db.session.add(new_translator_book)
     db.session.commit()
@@ -642,13 +644,14 @@ def translator_book():
 def category_book():
     category_name = request.json['category_name']
     isbn = request.json['isbn']
+    num = request.json['num']
     isbn = fix_isbn(isbn)
     if not bool(isbn[0]):
         return jsonify({'status': f'{isbn[1]}'}),400
-    if not Category.category_available(category_name):
-        return jsonify({'status': 'category not found'}),400
     isbn = isbn[0]
-    num = request.json['num']
+    if not Category.category_available(category_name):
+        new_category = Category(category_name)
+        db.session.add(new_category)
     new_category_book = CategoryBook(category_name, isbn, num)
     db.session.add(new_category_book)
     db.session.commit()
@@ -667,6 +670,30 @@ def cardpdf():
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf')
 
 #user routes
+@app.route('/api/user/view_book', methods=['POST'])
+@auth.login_required(role=['admin', 'operator', 'user'])
+def view_book():
+    isbn = request.json['isbn']
+    isbn = fix_isbn(isbn)
+    if not bool(isbn[0]):
+        return jsonify({'status': f'{isbn[1]}'}),400
+    isbn = int(isbn[0])
+    if Book.is_available(isbn):
+        authors = AuthorBook.query.filter_by(isbn = isbn).order_by(AuthorBook.num).all()
+        translators = TranslatorBook.query.filter_by(isbn = isbn).order_by(TranslatorBook.num).all()
+        categories = CategoryBook.query.filter_by(isbn = isbn).order_by(CategoryBook.num).all()
+        book = Book.query.get(isbn)
+        answer = f'isbn: {book.isbn}, name: {book.name}, edition: {book.edition} , publish year: {book.publish_year}, publisher name: {book.publisher_name}, quantity: {book.quantity}, remaining: {book.remaining}, '
+        for i in range(len(authors)):
+            answer += f'author{i+1}: {authors[i].author_name}, '
+        for i in range(len(translators)):
+            answer += f'translator{i+1}: {translators[i].author_name}, '
+        for i in range(len(categories)):
+            answer += f'category{i+1}: {categories[i].category_name}, '
+        return jsonify({'status': 'available', 'book': answer[:-2]})
+    else:
+        return jsonify({'status': 'not available'})
+
 @app.route('/api/user/change_password', methods=['POST'])
 @auth.login_required(role=['admin', 'operator', 'user'])
 def change_password():

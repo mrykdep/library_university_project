@@ -9,8 +9,6 @@ from flask_cors import CORS
 import os
 from pathlib import Path
 
-#future: books without category or author should be handeled in frontend
-
 #IMPORTANT MUST READ: database should be created manually
 #config values
 DEFAULT_BORROW_DAYS = 30

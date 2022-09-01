@@ -6,7 +6,6 @@ from flask_marshmallow import Marshmallow
 from flask_httpauth import HTTPBasicAuth
 from card_gen.gen import cardgen
 from flask_cors import CORS
-import os
 from pathlib import Path
 
 #IMPORTANT MUST READ: database should be created manually
@@ -286,7 +285,7 @@ class CategoryBook(db.Model):
         self.num = num
     
 #configs database if configed file doesn't exist
-if(not os.path.isfile('configed')):
+if(not Path.isfile('configed')):
     db.create_all()
     tempid_config = TempID()
     db.session.add(tempid_config)
@@ -362,7 +361,7 @@ def report():
         max_returned = [max_returned, returned_operator_dic.get(max_returned)]
 
     member_dic = {}
-    members = Returned.query.order_by(Returned.isbn).all()
+    members = Member.query.all()
     for check in members:
         if check.operator_id in member_dic:
             member_dic[check.operator_id] += 1
@@ -568,7 +567,11 @@ def return_book():
     db.session.delete(old_borrow)
     db.session.add(new_return)
     db.session.commit()
-    return jsonify({'status': 'ok'})
+    if new_return.penalty_days == 0:
+        msg = 'member has no penalties'
+    else:
+        msg = f'member has {new_return.penalty_days} days of penalties'
+    return jsonify({'status': 'ok', 'msg': msg})
 
 @app.route('/api/operator/add_category', methods=['POST'])
 @auth.login_required(role=['admin', 'operator'])

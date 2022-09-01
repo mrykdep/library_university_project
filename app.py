@@ -285,7 +285,7 @@ class CategoryBook(db.Model):
         self.num = num
     
 #configs database if configed file doesn't exist
-if(not Path.isfile('configed')):
+if(not Path.is_file(Path('./configed'))):
     db.create_all()
     tempid_config = TempID()
     db.session.add(tempid_config)

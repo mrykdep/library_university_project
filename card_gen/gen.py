@@ -37,5 +37,5 @@ def qrgen(member_id):
 #generate costum pdf file using the existing html file // code argument is only to name the file generated
 def PDFgen():
     config = pdfkit.configuration()
-    options = {'dpi': 365,'margin-top': '0in','margin-bottom': '0in','margin-right': '0in','margin-left': '0in','page-size': 'A8',"orientation": "Landscape",'disable-smart-shrinking': ''}
+    options = {'dpi': 365,'margin-top': '0in','margin-bottom': '0in','margin-right': '0in','margin-left': '0in','page-height': '51.7mm', 'page-width': '35.98mm',"orientation": "Landscape",'disable-smart-shrinking': ''}
     pdfkit.from_file(f'{Path().absolute()}/card_gen/res/index.html', f"{Path().absolute()}/card_gen/res/card.pdf", configuration=config , options = options)  

@@ -820,6 +820,10 @@ def login_admin():
     if member.member_type != 'admin':
         return jsonify({'status': 'this member is not an admin'}),403
     return jsonify({'status': 'ok'})
+
+@app.route('/api/test', methods=['GET'])
+def tester():
+    return jsonify({'status': 'ok'})
     
 if __name__ == '__main__':
     app.run(debug=False)

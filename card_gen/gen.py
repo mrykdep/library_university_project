@@ -4,6 +4,8 @@ import qrcode
 from pathlib import Path
 def cardgen(member_id,member_name,member_type,member_expire_date):
     member_expire_date = member_expire_date.strftime("%d/%m/%Y")
+    if member_type == 'admin':
+        member_expire_date = 'NON EXPIREABLE'
     qrgen(member_id)
     bargen(member_id)
     htmlgen(member_id,member_name,member_type,member_expire_date)

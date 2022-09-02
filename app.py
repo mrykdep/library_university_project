@@ -285,11 +285,10 @@ class CategoryBook(db.Model):
         self.num = num
     
 #configs database if configed file doesn't exist
-if(not Path.is_file(Path('./configed'))):
-    db.create_all()
+db.create_all()
+if(len(Member.query.all())==0):
     tempid_config = TempID()
     db.session.add(tempid_config)
-    db.session.commit()
     #add admin user
     current_date = date.today()
     member_name = ADMIN_NAME
@@ -297,6 +296,7 @@ if(not Path.is_file(Path('./configed'))):
     new_member = Member(member_name,ADMIN_PHONE ,member_password)
     new_member.member_id += 2000000000
     new_member.member_type = 'admin'
+    new_member.operator_id = 2000000000
     db.session.add(new_member)
     #config next_id for next user creation
     current_date = date.today()
@@ -306,8 +306,6 @@ if(not Path.is_file(Path('./configed'))):
     else:
         current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
-    fp = open('configed', 'x')
-    fp.close()
 
 #auth setup
 @auth.verify_password

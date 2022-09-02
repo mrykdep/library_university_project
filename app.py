@@ -361,7 +361,7 @@ def report():
         max_returned = [max_returned, returned_operator_dic.get(max_returned)]
 
     member_dic = {}
-    members = Member.query.all()
+    members = Member.queryquery.filter_by(member_type = 'user').all()
     for check in members:
         if check.operator_id in member_dic:
             member_dic[check.operator_id] += 1
@@ -398,6 +398,7 @@ def signup_admin():
         return jsonify({'status': 'type is not an operator or admin'}),400
     new_member = Member(member_name, member_phone, member_password)
     new_member.member_type = member_type
+    new_member.operator_id = auth.current_user()
     if member_type == 'admin':
         new_member.member_id += 2000000000
     else:

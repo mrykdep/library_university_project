@@ -361,7 +361,7 @@ def report():
         max_returned = [max_returned, returned_operator_dic.get(max_returned)]
 
     member_dic = {}
-    members = Member.queryquery.filter_by(member_type = 'user').all()
+    members = Member.query.filter_by(member_type = 'user').all()
     for check in members:
         if check.operator_id in member_dic:
             member_dic[check.operator_id] += 1

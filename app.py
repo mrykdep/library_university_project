@@ -412,7 +412,6 @@ def signup_admin():
     else:
         current_id.next_id = int(str(date.today().year)[2:] + '0000000')
     db.session.commit()
-    print(new_member.member_id)
     return jsonify({'status': 'ok', 'msg': f'member id: {new_member.member_id}'})
 
 @app.route('/api/admin/operator_renewal', methods=['POST'])
@@ -438,7 +437,6 @@ def cardpdfadmin():
         return jsonify({'status': 'member is not available'}),400
     member = Member.query.get(member_id)
     cardgen(member_id, member.member_name, member.member_type, member.member_expire_date)
-    print(f'{Path().absolute()}/card_gen/res/card.pdf')
     return send_file(f'{Path().absolute()}/card_gen/res/card.pdf', mimetype='application/pdf')
 
 #operator routes
